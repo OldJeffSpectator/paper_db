@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Paper DB</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div class="app">
+    <!-- ───── Sidebar ───── -->
+    <aside class="sidebar">
+      <div class="sidebar-logo">Paper DB</div>
+
+      <div class="mode-switch">
+        <button id="btn-search" class="mode-btn active" onclick="switchMode('search')">Search</button>
+        <button id="btn-fill"   class="mode-btn"        onclick="switchMode('fill')">Fill</button>
+      </div>
+
+      <!-- table list (search mode) -->
+      <div id="sidebar-tables" class="sidebar-section">
+        <h3>Tables</h3>
+        <ul id="table-list"></ul>
+      </div>
+
+      <div class="sidebar-section sidebar-bottom">
+        <button class="btn-rematch" onclick="triggerRematch()">Re-match References</button>
+      </div>
+    </aside>
+
+    <!-- ───── Main content ───── -->
+    <main class="content">
+
+      <!-- ===== SEARCH MODE ===== -->
+      <section id="search-mode">
+        <div class="query-bar">
+          <textarea id="sql-input" rows="3" placeholder="SELECT * FROM paper_stats WHERE year >= 2023"></textarea>
+          <button id="btn-execute" onclick="executeQuery()">Execute</button>
+        </div>
+        <div id="result-info" class="result-info"></div>
+        <div class="table-wrap">
+          <table id="results-table">
+            <thead id="results-head"></thead>
+            <tbody id="results-body"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- ===== FILL MODE ===== -->
+      <section id="fill-mode" style="display:none">
+        <div class="fill-tabs">
+          <button id="tab-paper" class="tab-btn active" onclick="switchFillTab('paper')">Add / Edit Paper</button>
+          <button id="tab-refs"  class="tab-btn"        onclick="switchFillTab('refs')">Batch References</button>
+        </div>
+
+        <!-- ── Add / Edit paper ── -->
+        <div id="paper-section" class="card">
+          <div class="form-row">
+            <label>Load existing paper to edit:</label>
+            <div class="ss-wrap" id="edit-paper-wrap">
+              <input type="text" class="ss-input" id="edit-paper-input" placeholder="Search by [id] or title... (empty = new paper)" autocomplete="off">
+              <input type="hidden" id="edit-paper-select" value="">
+              <ul class="ss-list" id="edit-paper-list"></ul>
+            </div>
+          </div>
+          <form id="paper-form" onsubmit="submitPaper(event)">
+            <div class="form-row">
+              <label for="f-title">Title *</label>
+              <input id="f-title" type="text" required>
+            </div>
+            <div class="form-grid-2">
+              <div class="form-row">
+                <label for="f-year">Year</label>
+                <input id="f-year" type="number" min="1900" max="2100">
+              </div>
+              <div class="form-row">
+                <label for="f-link">Paper link</label>
+                <input id="f-link" type="url" placeholder="https://arxiv.org/abs/...">
+              </div>
+            </div>
+            <div class="form-row">
+              <label for="f-authors">Authors <span class="hint">(comma-separated)</span></label>
+              <input id="f-authors" type="text" placeholder="Alice, Bob, Charlie">
+            </div>
+            <div class="form-row">
+              <label for="f-labels">Labels <span class="hint">(comma-separated keywords)</span></label>
+              <input id="f-labels" type="text" placeholder="NLP, transformer, attention">
+            </div>
+            <div class="form-grid-2">
+              <div class="form-row">
+                <label for="f-refcount">Reference count (from paper)</label>
+                <input id="f-refcount" type="number" min="0" value="0">
+              </div>
+              <div class="form-row">
+                <label for="f-citedby">Cited-by count (from paper)</label>
+                <input id="f-citedby" type="number" min="0" value="0">
+              </div>
+            </div>
+            <div class="form-row">
+              <label for="f-abstract">Abstract</label>
+              <textarea id="f-abstract" rows="5"></textarea>
+            </div>
+
+            <div class="citations-block">
+              <label class="section-label">BibTeX <span class="hint">(paste to auto-fill title, year, authors, link)</span></label>
+              <div class="form-row">
+                <textarea id="f-cite-bibtex" rows="4" placeholder="@article{key, author={...}, title={...}, year={2023}, ...}"></textarea>
+                <button type="button" class="btn-autofill" onclick="autofillFromBibtex()">Auto-fill from BibTeX</button>
+              </div>
+            </div>
+
+            <div class="form-actions">
+              <button type="submit" class="btn-primary" id="paper-submit-btn">Add Paper</button>
+              <button type="button" class="btn-secondary" onclick="resetPaperForm()">Clear</button>
+            </div>
+          </form>
+          <div id="paper-msg" class="msg"></div>
+          <div id="rematch-results" class="rematch-panel" style="display:none">
+            <h4>Re-match Results</h4>
+            <p id="rematch-summary"></p>
+            <ul id="rematch-list"></ul>
+          </div>
+        </div>
+
+        <!-- ── Batch references ── -->
+        <div id="refs-section" class="card" style="display:none">
+          <div class="form-row">
+            <label>Source paper (the paper whose references you are entering):</label>
+            <div class="ss-wrap" id="ref-paper-wrap">
+              <input type="text" class="ss-input" id="ref-paper-input" placeholder="Search by [id] or title..." autocomplete="off">
+              <input type="hidden" id="ref-paper-select" value="">
+              <ul class="ss-list" id="ref-paper-list"></ul>
+            </div>
+          </div>
+          <div class="form-row">
+            <label for="ref-text">Paste reference section text below:</label>
+            <textarea id="ref-text" rows="8" placeholder="[1] First Author et al. Paper Title. Conference, 2023.&#10;[2] ..."></textarea>
+          </div>
+          <div class="form-actions">
+            <button class="btn-primary" onclick="parseReferences()">Parse References</button>
+          </div>
+
+          <div id="parsed-refs" style="display:none">
+            <h3>Parsed References <span id="parsed-count"></span></h3>
+            <div class="ref-legend">
+              <span class="legend-item"><span class="dot dot-green"></span> Matched in DB</span>
+              <span class="legend-item"><span class="dot dot-orange"></span> No match</span>
+              <span class="legend-item"><span class="dot dot-grey"></span> Already referenced</span>
+            </div>
+            <ul id="ref-list"></ul>
+            <div class="form-actions">
+              <button class="btn-primary" onclick="batchInsertRefs()">Insert Selected</button>
+              <button class="btn-secondary" onclick="toggleAllRefs(true)">Select All</button>
+              <button class="btn-secondary" onclick="toggleAllRefs(false)">Deselect All</button>
+            </div>
+            <div id="refs-msg" class="msg"></div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
