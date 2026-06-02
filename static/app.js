@@ -207,6 +207,7 @@ async function loadPaperForEdit(id) {
     $("f-link").value     = p.paper_link || "";
 
     $("f-cite-bibtex").value = (p.citations || {}).BibTeX || "";
+    $("f-aliases").value = (p.aliases || []).join("\n");
     $("paper-submit-btn").textContent = "Update Paper";
   } catch (e) {
     showMsg("paper-msg", e.message, false);
@@ -222,6 +223,7 @@ function resetPaperForm() {
   $("edit-paper-input").value = "";
   $("paper-submit-btn").textContent = "Add Paper";
   $("f-cite-bibtex").value = "";
+  $("f-aliases").value = "";
 }
 
 // ---------------------------------------------------------------------------
@@ -234,10 +236,11 @@ async function autofillFromBibtex() {
   try {
     const data = await api("POST", "/api/bibtex/parse", { bibtex });
 
-    if (data.title)      $("f-title").value   = data.title;
-    if (data.year)       $("f-year").value    = data.year;
-    if (data.authors)    $("f-authors").value = data.authors;
-    if (data.paper_link) $("f-link").value    = data.paper_link;
+    if (data.title)      $("f-title").value    = data.title;
+    if (data.year)       $("f-year").value     = data.year;
+    if (data.authors)    $("f-authors").value  = data.authors;
+    if (data.paper_link) $("f-link").value     = data.paper_link;
+    if (data.abstract)   $("f-abstract").value = data.abstract;
 
     showMsg("paper-msg", "Auto-filled from BibTeX. Review and submit.", true);
   } catch (e) {
@@ -255,6 +258,8 @@ async function submitPaper(e) {
   const bib = $("f-cite-bibtex").value.trim();
   if (bib) citations.BibTeX = bib;
 
+  const aliases = $("f-aliases").value.split("\n").map(s => s.trim()).filter(Boolean);
+
   const payload = {
     title:         $("f-title").value.trim(),
     year:          $("f-year").value ? parseInt($("f-year").value) : null,
@@ -265,6 +270,7 @@ async function submitPaper(e) {
     abstract:      $("f-abstract").value.trim(),
     paper_link:    $("f-link").value.trim(),
     citations,
+    aliases,
   };
 
   try {
@@ -419,7 +425,11 @@ async function batchInsertRefs() {
       source_paper_id: parseInt(sourceId),
       references,
     });
-    showMsg("refs-msg", `Inserted ${res.inserted}, skipped ${res.skipped_duplicates} duplicates.`, true);
+    let msg = `Inserted ${res.inserted}, skipped ${res.skipped_duplicates} duplicates.`;
+    const rematched = res.rematched || [];
+    if (rematched.length) msg += ` Auto-matched ${rematched.length} reference(s).`;
+    showMsg("refs-msg", msg, true);
+    renderRematchResults(rematched);
     $("parsed-refs").style.display = "none";
     $("ref-text").value = "";
   } catch (e) {

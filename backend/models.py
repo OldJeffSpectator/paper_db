@@ -11,7 +11,8 @@ class PaperCreate(BaseModel):
     abstract: str = ""
     authors: str = ""
     paper_link: str = ""
-    citations: Dict[str, str] = {}  # {"APA": "...", "IEEE": "...", ...}
+    citations: Dict[str, str] = {}
+    aliases: List[str] = []
 
 
 class PaperUpdate(BaseModel):
@@ -24,6 +25,7 @@ class PaperUpdate(BaseModel):
     authors: Optional[str] = None
     paper_link: Optional[str] = None
     citations: Optional[Dict[str, str]] = None
+    aliases: Optional[List[str]] = None
 
 
 class QueryRequest(BaseModel):

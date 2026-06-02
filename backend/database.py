@@ -57,6 +57,14 @@ def init_db():
                 UNIQUE(paper_id, author_name)
             );
 
+            CREATE TABLE IF NOT EXISTS paper_aliases (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                paper_id INTEGER NOT NULL,
+                alias_title TEXT NOT NULL,
+                FOREIGN KEY (paper_id) REFERENCES paper_stats(id) ON DELETE CASCADE,
+                UNIQUE(paper_id, alias_title)
+            );
+
             CREATE TABLE IF NOT EXISTS paper_citation_format (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 paper_id INTEGER NOT NULL,

@@ -135,13 +135,22 @@ def parse_bibtex_endpoint(req: dict):
         "year": int(year) if year.isdigit() else None,
         "authors": ", ".join(f"{a['first']} {a['last']}" for a in authors_parsed),
         "paper_link": url,
+        "abstract": fields.get("abstract", ""),
     }
 
 
 def _parse_bibtex_fields(text: str) -> dict[str, str]:
     fields = {}
-    for m in re.finditer(r"(\w+)\s*=\s*\{(.*?)\}", text, re.DOTALL):
+    # Handle key = {value} with one level of nested braces (e.g. {Teams of {LLM}})
+    for m in re.finditer(r'(\w+)\s*=\s*\{((?:[^{}]|\{[^{}]*\})*)\}', text, re.DOTALL):
         fields[m.group(1).lower()] = re.sub(r"\s+", " ", m.group(2)).strip()
+    # Handle key = "value" (common in ACL Anthology, Google Scholar exports)
+    for m in re.finditer(r'(\w+)\s*=\s*"([^"]*)"', text, re.DOTALL):
+        key = m.group(1).lower()
+        if key not in fields:
+            fields[key] = re.sub(r"\s+", " ", m.group(2)).strip()
+    # Strip LaTeX brace-protection from values ({LLM} -> LLM, {E}uropean -> European)
+    fields = {k: re.sub(r'[{}]', '', v) for k, v in fields.items()}
     return fields
 
 
@@ -186,6 +195,10 @@ def get_paper(paper_id: int):
             "SELECT style, citation_text FROM paper_citation_format WHERE paper_id = ?", (paper_id,)
         ).fetchall()
         result["citations"] = {r["style"]: r["citation_text"] for r in cites}
+        aliases = conn.execute(
+            "SELECT alias_title FROM paper_aliases WHERE paper_id = ?", (paper_id,)
+        ).fetchall()
+        result["aliases"] = [r["alias_title"] for r in aliases]
         return result
 
 
@@ -206,6 +219,7 @@ def create_paper(paper: PaperCreate):
             _sync_labels(conn, paper_id, paper.labels)
             _sync_authors(conn, paper_id, paper.authors)
             _sync_citations(conn, paper_id, paper.citations)
+            _sync_aliases(conn, paper_id, paper.aliases)
             conn.commit()
         except sqlite3.IntegrityError:
             raise HTTPException(409, f"Paper already exists: {paper.title}")
@@ -221,8 +235,8 @@ def update_paper(paper_id: int, paper: PaperUpdate):
         if not conn.execute("SELECT 1 FROM paper_stats WHERE id = ?", (paper_id,)).fetchone():
             raise HTTPException(404, "Paper not found")
 
-        fields = {k: v for k, v in paper.model_dump(exclude={"citations"}).items() if v is not None}
-        if not fields and paper.citations is None:
+        fields = {k: v for k, v in paper.model_dump(exclude={"citations", "aliases"}).items() if v is not None}
+        if not fields and paper.citations is None and paper.aliases is None:
             return {"message": "No changes"}
 
         if fields:
@@ -240,6 +254,8 @@ def update_paper(paper_id: int, paper: PaperUpdate):
             _sync_authors(conn, paper_id, fields["authors"])
         if paper.citations is not None:
             _sync_citations(conn, paper_id, paper.citations)
+        if paper.aliases is not None:
+            _sync_aliases(conn, paper_id, paper.aliases)
         conn.commit()
 
     rematched = _rematch_unresolved_references()
@@ -262,6 +278,14 @@ def _sync_authors(conn, paper_id: int, csv: str):
             conn.execute("INSERT OR IGNORE INTO paper_authors (paper_id, author_name) VALUES (?,?)", (paper_id, name))
 
 
+def _sync_aliases(conn, paper_id: int, aliases: list[str]):
+    conn.execute("DELETE FROM paper_aliases WHERE paper_id = ?", (paper_id,))
+    for alias in aliases:
+        alias = alias.strip()
+        if alias:
+            conn.execute("INSERT OR IGNORE INTO paper_aliases (paper_id, alias_title) VALUES (?,?)", (paper_id, alias))
+
+
 def _sync_citations(conn, paper_id: int, citations: dict[str, str]):
     conn.execute("DELETE FROM paper_citation_format WHERE paper_id = ?", (paper_id,))
     for style, text in citations.items():
@@ -278,8 +302,11 @@ def _sync_citations(conn, paper_id: int, citations: dict[str, str]):
 # ---------------------------------------------------------------------------
 
 def _build_title_index(conn) -> list[tuple[int, str]]:
-    """All (paper_id, title) pairs for substring matching."""
-    return [(r["id"], r["title"]) for r in conn.execute("SELECT id, title FROM paper_stats").fetchall()]
+    """All (paper_id, title) pairs for substring matching, including aliases."""
+    index = [(r["id"], r["title"]) for r in conn.execute("SELECT id, title FROM paper_stats").fetchall()]
+    for r in conn.execute("SELECT paper_id, alias_title FROM paper_aliases").fetchall():
+        index.append((r["paper_id"], r["alias_title"]))
+    return index
 
 
 def _build_citation_index(conn) -> dict[str, tuple[int, str]]:
@@ -352,10 +379,14 @@ def _rematch_unresolved_references() -> list[dict]:
         for ref in unresolved:
             pid, title = None, ""
 
-            # Strategy 1: direct title lookup (handles manual title edits via SQL)
+            # Strategy 1a: exact title lookup (handles manual title edits via SQL)
             ref_title = (ref["referenced_paper_title"] or "").strip()
             if ref_title and ref_title.lower() in title_lookup:
                 pid, title = title_lookup[ref_title.lower()]
+
+            # Strategy 1b: substring match against referenced_paper_title
+            if pid is None and ref_title:
+                pid, title = _match_reference(ref_title, title_index, citation_index)
 
             # Strategy 2 & 3: match via raw_citation_text
             raw = (ref["raw_citation_text"] or "").strip()
@@ -513,6 +544,9 @@ def batch_insert_references(req: ReferenceBatchInsert):
         if not source:
             raise HTTPException(404, "Source paper not found")
 
+        title_lookup = {r["title"].lower(): r["id"] for r in conn.execute("SELECT id, title FROM paper_stats").fetchall()}
+        alias_lookup = {r["alias_title"].lower(): r["paper_id"] for r in conn.execute("SELECT paper_id, alias_title FROM paper_aliases").fetchall()}
+
         inserted = skipped = 0
         for ref in req.references:
             raw = ref.get("raw_citation_text", "").strip()
@@ -520,6 +554,9 @@ def batch_insert_references(req: ReferenceBatchInsert):
             pid = ref.get("referenced_paper_id")
             if not raw:
                 continue
+            if pid is None and title:
+                key = title.lower()
+                pid = title_lookup.get(key) or alias_lookup.get(key)
             try:
                 conn.execute(
                     """INSERT INTO paper_reference
@@ -531,7 +568,9 @@ def batch_insert_references(req: ReferenceBatchInsert):
             except sqlite3.IntegrityError:
                 skipped += 1
         conn.commit()
-        return {"inserted": inserted, "skipped_duplicates": skipped}
+
+    rematched = _rematch_unresolved_references()
+    return {"inserted": inserted, "skipped_duplicates": skipped, "rematched": rematched}
 
 
 # ---------------------------------------------------------------------------
