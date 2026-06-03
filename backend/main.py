@@ -91,7 +91,12 @@ def execute_query(req: QueryRequest):
     except Exception:
         pass
 
-    exec_sql = sql if has_limit else f"{sql} LIMIT 100"
+    has_order = bool(re.search(r"\bORDER\s+BY\b", sql, re.IGNORECASE))
+    exec_sql = sql
+    if not has_order and not has_limit:
+        exec_sql += " ORDER BY id DESC"
+    if not has_limit:
+        exec_sql += " LIMIT 100"
 
     try:
         with get_connection() as conn:

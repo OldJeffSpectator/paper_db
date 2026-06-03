@@ -2,6 +2,8 @@
 
 A lightweight local database for managing academic papers, their metadata, and reference networks. Built with Python (FastAPI + SQLite) and a browser-based UI.
 
+> **Security note:** The server binds to `127.0.0.1` (localhost only) and is not exposed to the network. No authentication, rate limiting, or input sanitisation is implemented. This tool is designed for **local single-user use only** — do not expose it to public traffic.
+
 ## Quick Start
 
 **Windows:**

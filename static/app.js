@@ -77,7 +77,7 @@ function selectTable(name) {
   document.querySelectorAll("#table-list li").forEach(li => {
     li.classList.toggle("active", li.textContent === name);
   });
-  api("POST", "/api/query", { sql: `SELECT * FROM ${name}` })
+  api("POST", "/api/query", { sql: `SELECT * FROM ${name} ORDER BY id DESC` })
     .then(data => renderResults(data))
     .catch(e => {
       $("result-info").textContent = "Error: " + e.message;

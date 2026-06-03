@@ -147,3 +147,65 @@ Future feature (deferred):
 - Network/graph view using Cytoscape.js — nodes = papers (sized by in-degree), edges = citations (directed arrows),
   color-coded by year, dagre layout. Schema already supports this, no changes needed.
 ```
+
+---
+
+## Prompt 9 — Paper aliases for title-variant matching
+
+```
+Problem: paper title "NYU CTF Bench: ... database ..." doesn't match reference text containing "NYU CTF Dataset: ... dataset ...".
+Case-insensitive matching was already in place — the issue is genuinely different words.
+
+Solution: added paper_aliases table (paper_id, alias_title, UNIQUE).
+- Aliases are registered via a new "Alternate titles" textarea on the paper form (one per line).
+- _build_title_index now includes both paper_stats.title and paper_aliases.alias_title for substring matching.
+- _rematch_unresolved_references Strategy 1 also checks aliases for direct title lookup.
+```
+
+---
+
+## Prompt 10 — Auto-link referenced_paper_id at insert time
+
+```
+Problem: batch inserting references with a manually typed referenced_paper_title didn't auto-fill referenced_paper_id.
+The backend just blindly inserted whatever the frontend sent (usually null for unmatched refs).
+
+Fix:
+- batch_insert_references now looks up referenced_paper_title in paper_stats and paper_aliases before inserting.
+- After insert, automatically runs _rematch_unresolved_references() and returns results.
+- UI shows auto-match count in the success message and renders rematch results panel.
+```
+
+---
+
+## Prompt 11 — BibTeX parser: support "quoted" values and abstract
+
+```
+Problem: BibTeX entries from ACL Anthology / Google Scholar use "value" delimiters instead of {value}.
+The parser regex only matched {value}, so all fields came back empty.
+
+Fix:
+- _parse_bibtex_fields now handles both {value} (with one level of nested braces) and "value" delimiters.
+- Strips LaTeX brace-protection from values ({LLM} → LLM, {E}uropean → European).
+- Auto-fill now also populates the Abstract field when present in BibTeX.
+
+Test file: test/test_bibtex_parse.py
+```
+
+---
+
+## Prompt 12 — Search mode UX improvements
+
+```
+1. Batch References tab: source paper dropdown now clears when switching to the tab,
+   preventing accidental inserts to the wrong paper.
+
+2. SQL text box:
+   a. Clicking a table name in the sidebar shows default SELECT * view but does NOT overwrite the SQL text box.
+   b. Highlight/select part of the SQL text → Execute runs only the selected portion.
+   c. Default height increased from 3 rows to 8 rows.
+   d. SQL text persisted to localStorage (5-second debounce after typing stops), survives page reload.
+
+3. Default query ordering: when no ORDER BY or LIMIT is specified, auto-appends ORDER BY id DESC LIMIT 100
+   so the most recently added rows appear first.
+```
