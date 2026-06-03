@@ -466,12 +466,14 @@ def _split_references(text: str) -> list[str]:
     # --- Phase 0: check for numbered styles BEFORE merging lines ---
     # Use \d{1,3} to avoid matching 4-digit years (2023., 2024.) as ref numbers
     # (?:^|\n) so the very first [1] at start-of-string is also captured
+    # Require at least 2 numbered items (len > 4) to avoid false triggers from
+    # stray digit-lines like URL fragments ("08." from a broken "2504.054\n08.")
     parts = re.split(r"(?:^|\n)\s*\[(\d{1,3})\]\s*", text)
-    if len(parts) > 2:
+    if len(parts) > 4:
         return [re.sub(r"\s+", " ", s).strip() for s in _collect_parts(parts) if s.strip()]
 
     parts = re.split(r"(?:^|\n)\s*(\d{1,3})\.\s+", text)
-    if len(parts) > 2:
+    if len(parts) > 4:
         return [re.sub(r"\s+", " ", s).strip() for s in _collect_parts(parts) if s.strip()]
 
     # --- Phase 1: merge PDF line breaks ---
@@ -501,8 +503,9 @@ def _split_references(text: str) -> list[str]:
 
 
 _CONTINUATION_PREFIXES = re.compile(
-    r"^(?:In |URL |Available |Accessed |Retrieved |Presented |Published |"
-    r"Proceedings |Journal |Conference |Chapter |Technical |pp\.|vol\.|no\.)",
+    r"^(?:In |URL |Available |Accessed[: ]|Retrieved[: ]|Presented |Published |"
+    r"Proceedings |Journal |Conference |Chapter |Technical |Communications |"
+    r"Transactions |pp\.|vol\.|no\.)",
     re.IGNORECASE,
 )
 
