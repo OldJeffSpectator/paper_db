@@ -50,6 +50,10 @@ function switchFillTab(tab) {
   $("tab-refs").classList.toggle("active", tab === "refs");
   $("paper-section").style.display = tab === "paper" ? "" : "none";
   $("refs-section").style.display  = tab === "refs"  ? "" : "none";
+  if (tab === "refs") {
+    $("ref-paper-input").value = "";
+    $("ref-paper-select").value = "";
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -73,15 +77,22 @@ function selectTable(name) {
   document.querySelectorAll("#table-list li").forEach(li => {
     li.classList.toggle("active", li.textContent === name);
   });
-  $("sql-input").value = `SELECT * FROM ${name}`;
-  executeQuery();
+  api("POST", "/api/query", { sql: `SELECT * FROM ${name}` })
+    .then(data => renderResults(data))
+    .catch(e => {
+      $("result-info").textContent = "Error: " + e.message;
+      $("results-head").innerHTML = "";
+      $("results-body").innerHTML = "";
+    });
 }
 
 // ---------------------------------------------------------------------------
 // Search mode: execute query
 // ---------------------------------------------------------------------------
 async function executeQuery() {
-  const sql = $("sql-input").value.trim();
+  const el = $("sql-input");
+  const selected = el.value.substring(el.selectionStart, el.selectionEnd).trim();
+  const sql = selected || el.value.trim();
   if (!sql) return;
   try {
     const data = await api("POST", "/api/query", { sql });
@@ -465,10 +476,30 @@ async function triggerRematch() {
 }
 
 // ---------------------------------------------------------------------------
+// SQL text persistence (localStorage with 5s debounce)
+// ---------------------------------------------------------------------------
+const SQL_STORAGE_KEY = "paperdb_sql_text";
+let sqlSaveTimer = null;
+
+function initSqlPersistence() {
+  const el = $("sql-input");
+  const saved = localStorage.getItem(SQL_STORAGE_KEY);
+  if (saved) el.value = saved;
+
+  el.addEventListener("input", () => {
+    clearTimeout(sqlSaveTimer);
+    sqlSaveTimer = setTimeout(() => {
+      localStorage.setItem(SQL_STORAGE_KEY, el.value);
+    }, 5000);
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Init
 // ---------------------------------------------------------------------------
 document.addEventListener("DOMContentLoaded", () => {
   loadTables();
+  initSqlPersistence();
   initSearchableSelect("edit-paper-input", "edit-paper-select", "edit-paper-list", (id) => {
     loadPaperForEdit(id);
   });
