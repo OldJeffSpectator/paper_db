@@ -420,6 +420,58 @@ def rematch_endpoint():
     return {"rematched": rematched, "count": len(rematched)}
 
 
+@app.get("/api/graph")
+def get_graph(label: str = "", year_min: int = 0, year_max: int = 9999):
+    """Return nodes and edges for the citation graph view."""
+    with get_connection() as conn:
+        edges = conn.execute(
+            """SELECT source_paper_id, referenced_paper_id
+               FROM paper_reference
+               WHERE referenced_paper_id IS NOT NULL"""
+        ).fetchall()
+        edge_list = [{"source": r["source_paper_id"], "target": r["referenced_paper_id"]} for r in edges]
+
+        connected_ids = set()
+        for e in edge_list:
+            connected_ids.add(e["source"])
+            connected_ids.add(e["target"])
+
+        if not connected_ids:
+            return {"nodes": [], "edges": []}
+
+        placeholders = ",".join("?" * len(connected_ids))
+        papers = conn.execute(
+            f"SELECT id, title, year, labels, authors, paper_link FROM paper_stats WHERE id IN ({placeholders})",
+            list(connected_ids),
+        ).fetchall()
+
+        in_degree = {}
+        for e in edge_list:
+            in_degree[e["target"]] = in_degree.get(e["target"], 0) + 1
+
+        nodes = []
+        for p in papers:
+            yr = p["year"] or 0
+            if label and label.lower() not in (p["labels"] or "").lower():
+                continue
+            if yr and (yr < year_min or yr > year_max):
+                continue
+            nodes.append({
+                "id": p["id"],
+                "title": p["title"],
+                "year": p["year"],
+                "labels": p["labels"],
+                "authors": p["authors"],
+                "paper_link": p["paper_link"],
+                "in_degree": in_degree.get(p["id"], 0),
+            })
+
+        visible_ids = {n["id"] for n in nodes}
+        filtered_edges = [e for e in edge_list if e["source"] in visible_ids and e["target"] in visible_ids]
+
+        return {"nodes": nodes, "edges": filtered_edges}
+
+
 # ---------------------------------------------------------------------------
 # API: Reference parsing & batch insert
 # ---------------------------------------------------------------------------

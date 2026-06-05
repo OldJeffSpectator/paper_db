@@ -426,3 +426,116 @@ body {
 }
 .rematch-source { color: #64748b; }
 .rematch-matched { font-weight: 600; color: #0c4a6e; }
+
+/* ── Graph mode ─────────────────────────────────────────── */
+#graph-mode {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+#cy-container {
+  flex: 1;
+  min-height: 0;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  position: relative;
+}
+
+/* ── Graph sidebar controls ─────────────────────────────── */
+.graph-ctrl { margin-bottom: 12px; }
+.graph-ctrl label {
+  display: block;
+  font-size: .75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  color: #94a3b8;
+  margin-bottom: 4px;
+}
+.graph-ctrl select,
+.graph-ctrl input {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid #475569;
+  border-radius: 4px;
+  background: #334155;
+  color: #e2e8f0;
+  font-size: .82rem;
+  font-family: inherit;
+  outline-color: #3b82f6;
+}
+.graph-ctrl select option { background: #1e293b; }
+.graph-year-range {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.graph-year-range input { width: 50%; }
+.graph-year-range span { color: #64748b; }
+.btn-graph-reload {
+  width: 100%;
+  padding: 7px 0;
+  background: #3b82f6;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  font-size: .82rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background .15s;
+}
+.btn-graph-reload:hover { background: #2563eb; }
+
+/* ── Node tooltip ───────────────────────────────────────── */
+.node-tooltip {
+  position: absolute;
+  bottom: 16px;
+  left: 16px;
+  max-width: 480px;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0,0,0,.12);
+  padding: 14px 18px;
+  z-index: 20;
+  font-size: .85rem;
+}
+.node-tooltip-title {
+  font-weight: 700;
+  font-size: .95rem;
+  color: #1e293b;
+  margin-bottom: 6px;
+  user-select: text;
+  cursor: text;
+}
+.node-tooltip-meta {
+  color: #64748b;
+  font-size: .8rem;
+  line-height: 1.5;
+  margin-bottom: 8px;
+}
+.node-tooltip-actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+.node-tooltip-actions button {
+  padding: 4px 12px;
+  background: #3b82f6;
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  font-size: .78rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.node-tooltip-actions button:hover { background: #2563eb; }
+.node-tooltip-actions a {
+  font-size: .78rem;
+  color: #3b82f6;
+  text-decoration: none;
+}
+.node-tooltip-actions a:hover { text-decoration: underline; }

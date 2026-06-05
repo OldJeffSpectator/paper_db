@@ -15,6 +15,7 @@
       <div class="mode-switch">
         <button id="btn-search" class="mode-btn active" onclick="switchMode('search')">Search</button>
         <button id="btn-fill"   class="mode-btn"        onclick="switchMode('fill')">Fill</button>
+        <button id="btn-graph"  class="mode-btn"        onclick="switchMode('graph')">Graph</button>
       </div>
 
       <!-- table list (search mode) -->
@@ -23,9 +24,30 @@
         <ul id="table-list"></ul>
       </div>
 
-      <div class="sidebar-section sidebar-bottom">
-        <button class="btn-rematch" onclick="triggerRematch()">Re-match References</button>
+      <!-- graph controls (graph mode) -->
+      <div id="sidebar-graph" class="sidebar-section" style="display:none">
+        <h3>Graph Controls</h3>
+        <div class="graph-ctrl">
+          <label for="graph-label">Filter by label</label>
+          <input type="text" id="graph-label" placeholder="e.g. LLM, security" autocomplete="off">
+        </div>
+        <div class="graph-ctrl">
+          <label>Year range</label>
+          <div class="graph-year-range">
+            <input type="number" id="graph-year-min" placeholder="min" min="1900" max="2100">
+            <span>–</span>
+            <input type="number" id="graph-year-max" placeholder="max" min="1900" max="2100">
+          </div>
+        </div>
+        <div class="graph-ctrl">
+          <label for="graph-search">Highlight node</label>
+          <input type="text" id="graph-search" placeholder="Search title..." autocomplete="off">
+        </div>
+        <button class="btn-graph-reload" onclick="loadGraph()">Reload Graph</button>
+        <button class="btn-graph-reload" onclick="fitGraph()" style="margin-top:6px">Fit to View</button>
       </div>
+
+      <div class="sidebar-section sidebar-bottom"></div>
     </aside>
 
     <!-- ───── Main content ───── -->
@@ -143,6 +165,7 @@
           </div>
           <div class="form-actions">
             <button class="btn-primary" onclick="parseReferences()">Parse References</button>
+            <button class="btn-secondary" onclick="triggerRematch()">Re-match References</button>
           </div>
 
           <div id="parsed-refs" style="display:none">
@@ -162,9 +185,26 @@
           </div>
         </div>
       </section>
+
+      <!-- ===== GRAPH MODE ===== -->
+      <section id="graph-mode" style="display:none">
+        <div id="graph-info" class="result-info"></div>
+        <div id="cy-container"></div>
+        <div id="node-tooltip" class="node-tooltip" style="display:none">
+          <div class="node-tooltip-title" id="tooltip-title"></div>
+          <div class="node-tooltip-meta" id="tooltip-meta"></div>
+          <div class="node-tooltip-actions">
+            <button onclick="copyTooltipTitle()">Copy title</button>
+            <a id="tooltip-link" href="#" target="_blank">Open link</a>
+          </div>
+        </div>
+      </section>
     </main>
   </div>
 
+  <script src="https://unpkg.com/cytoscape@3.30.4/dist/cytoscape.min.js"></script>
+  <script src="https://unpkg.com/dagre@0.8.5/dist/dagre.min.js"></script>
+  <script src="https://unpkg.com/cytoscape-dagre@2.5.0/cytoscape-dagre.js"></script>
   <script src="/static/app.js"></script>
 </body>
 </html>

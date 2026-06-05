@@ -39,9 +39,14 @@ function switchMode(mode) {
   currentMode = mode;
   $("btn-search").classList.toggle("active", mode === "search");
   $("btn-fill").classList.toggle("active", mode === "fill");
+  $("btn-graph").classList.toggle("active", mode === "graph");
   $("search-mode").style.display = mode === "search" ? "" : "none";
   $("fill-mode").style.display   = mode === "fill"   ? "" : "none";
+  $("graph-mode").style.display  = mode === "graph"  ? "" : "none";
+  $("sidebar-tables").style.display = mode === "graph" ? "none" : "";
+  $("sidebar-graph").style.display  = mode === "graph" ? "" : "none";
   if (mode === "fill") refreshPaperDropdowns();
+  if (mode === "graph") loadGraph();
 }
 
 function switchFillTab(tab) {
@@ -476,6 +481,184 @@ async function triggerRematch() {
 }
 
 // ---------------------------------------------------------------------------
+// Graph mode
+// ---------------------------------------------------------------------------
+let cy = null;
+let graphSearchTimer = null;
+
+function yearToColor(year, minY, maxY) {
+  if (!year) return "#94a3b8";
+  const span = Math.max(maxY - minY, 1);
+  const t = (year - minY) / span;
+  const r = Math.round(59 + t * (239 - 59));
+  const g = Math.round(130 + (1 - Math.abs(t - 0.5) * 2) * (70));
+  const b = Math.round(246 - t * (246 - 68));
+  return `rgb(${r},${g},${b})`;
+}
+
+async function loadGraph() {
+  const label = $("graph-label").value.trim();
+  const yearMin = $("graph-year-min").value ? parseInt($("graph-year-min").value) : 0;
+  const yearMax = $("graph-year-max").value ? parseInt($("graph-year-max").value) : 9999;
+
+  let params = new URLSearchParams();
+  if (label) params.set("label", label);
+  if (yearMin) params.set("year_min", yearMin);
+  if (yearMax < 9999) params.set("year_max", yearMax);
+
+  const data = await api("GET", `/api/graph?${params}`);
+  $("graph-info").textContent = `${data.nodes.length} papers, ${data.edges.length} citation edges`;
+
+  if (!data.nodes.length) {
+    if (cy) cy.destroy();
+    cy = null;
+    $("graph-info").textContent = "No connected papers found with current filters.";
+    return;
+  }
+
+  const years = data.nodes.map(n => n.year).filter(Boolean);
+  const minY = years.length ? Math.min(...years) : 2020;
+  const maxY = years.length ? Math.max(...years) : 2026;
+  const maxDeg = Math.max(1, ...data.nodes.map(n => n.in_degree));
+
+  const elements = [];
+  data.nodes.forEach(n => {
+    const shortTitle = n.title.length > 45 ? n.title.slice(0, 42) + "..." : n.title;
+    elements.push({
+      group: "nodes",
+      data: {
+        id: String(n.id),
+        label: `${shortTitle}\n(${n.year || "?"})`,
+        fullTitle: n.title,
+        year: n.year,
+        authors: n.authors || "",
+        labels: n.labels || "",
+        paperLink: n.paper_link || "",
+        inDegree: n.in_degree,
+        nodeSize: 25 + (n.in_degree / maxDeg) * 45,
+        nodeColor: yearToColor(n.year, minY, maxY),
+      },
+    });
+  });
+  data.edges.forEach(e => {
+    elements.push({
+      group: "edges",
+      data: { source: String(e.source), target: String(e.target) },
+    });
+  });
+
+  if (cy) cy.destroy();
+
+  cy = cytoscape({
+    container: $("cy-container"),
+    elements,
+    userZoomingEnabled: true,
+    userPanningEnabled: true,
+    boxSelectionEnabled: false,
+    wheelSensitivity: 0.3,
+    style: [
+      {
+        selector: "node",
+        style: {
+          "width": "data(nodeSize)",
+          "height": "data(nodeSize)",
+          "background-color": "data(nodeColor)",
+          "label": "data(label)",
+          "font-size": "9px",
+          "text-wrap": "wrap",
+          "text-max-width": "120px",
+          "text-valign": "bottom",
+          "text-margin-y": 6,
+          "color": "#334155",
+          "border-width": 1.5,
+          "border-color": "#94a3b8",
+        },
+      },
+      {
+        selector: "node.highlighted",
+        style: {
+          "border-width": 4,
+          "border-color": "#ef4444",
+          "background-color": "#fca5a5",
+          "z-index": 999,
+        },
+      },
+      {
+        selector: "edge",
+        style: {
+          "width": 1.5,
+          "line-color": "#cbd5e1",
+          "target-arrow-color": "#94a3b8",
+          "target-arrow-shape": "triangle",
+          "curve-style": "bezier",
+          "arrow-scale": 0.8,
+        },
+      },
+    ],
+  });
+
+  runGraphLayout();
+
+  cy.on("tap", "node", function (evt) {
+    const d = evt.target.data();
+    $("tooltip-title").textContent = d.fullTitle;
+    let meta = "";
+    if (d.year) meta += `Year: ${d.year}`;
+    if (d.authors) meta += `\nAuthors: ${d.authors}`;
+    if (d.labels) meta += `\nLabels: ${d.labels}`;
+    meta += `\nCited by: ${d.inDegree} paper(s) in DB`;
+    $("tooltip-meta").textContent = meta;
+    const link = $("tooltip-link");
+    if (d.paperLink) {
+      link.href = d.paperLink;
+      link.style.display = "";
+    } else {
+      link.style.display = "none";
+    }
+    $("node-tooltip").style.display = "";
+  });
+
+  cy.on("tap", function (evt) {
+    if (evt.target === cy) {
+      $("node-tooltip").style.display = "none";
+    }
+  });
+}
+
+function runGraphLayout() {
+  if (!cy) return;
+  cy.layout({ name: "dagre", rankDir: "TB", nodeSep: 60, rankSep: 80, animate: true, animationDuration: 400 }).run();
+}
+
+function fitGraph() { if (cy) cy.fit(null, 30); }
+
+function copyTooltipTitle() {
+  const title = $("tooltip-title").textContent;
+  navigator.clipboard.writeText(title).then(() => {
+    const btn = $("node-tooltip").querySelector("button");
+    btn.textContent = "Copied!";
+    setTimeout(() => { btn.textContent = "Copy title"; }, 1500);
+  });
+}
+
+function initGraphSearch() {
+  $("graph-search").addEventListener("input", () => {
+    clearTimeout(graphSearchTimer);
+    graphSearchTimer = setTimeout(() => {
+      if (!cy) return;
+      const q = $("graph-search").value.trim().toLowerCase();
+      cy.nodes().removeClass("highlighted");
+      if (!q) return;
+      cy.nodes().forEach(n => {
+        if (n.data("fullTitle").toLowerCase().includes(q)) {
+          n.addClass("highlighted");
+        }
+      });
+    }, 400);
+  });
+}
+
+// ---------------------------------------------------------------------------
 // SQL text persistence (localStorage with 5s debounce)
 // ---------------------------------------------------------------------------
 const SQL_STORAGE_KEY = "paperdb_sql_text";
@@ -500,6 +683,7 @@ function initSqlPersistence() {
 document.addEventListener("DOMContentLoaded", () => {
   loadTables();
   initSqlPersistence();
+  initGraphSearch();
   initSearchableSelect("edit-paper-input", "edit-paper-select", "edit-paper-list", (id) => {
     loadPaperForEdit(id);
   });
